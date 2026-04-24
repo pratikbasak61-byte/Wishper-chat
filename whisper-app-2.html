@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drop — Anonymous Messages</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inconsolata:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d0d0f;
+  --surface: #141417;
+  --surface2: #1c1c21;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #eeeef0;
+  --muted: #6b6b7a;
+  --accent: #7fff6e;
+  --accent-dim: rgba(127,255,110,0.12);
+  --accent-glow: rgba(127,255,110,0.25);
+  --red: #ff5f5f;
+  --red-dim: rgba(255,95,95,0.1);
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inconsolata', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* grain */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 9999;
+}
+
+/* ── TOP BAR ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 58px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 100;
+}
+
+.logo {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em;
+  color: var(--text);
+}
+.logo .dot { color: var(--accent); }
+
+.tab-group { display: flex; gap: 4px; }
+.tab {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 7px 18px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--muted); cursor: pointer; transition: all 0.18s;
+  position: relative;
+}
+.tab:hover { color: var(--text); border-color: var(--border2); }
+.tab.active { color: var(--accent); border-color: rgba(127,255,110,0.3); background: var(--accent-dim); }
+.tab .badge {
+  position: absolute; top: -5px; right: -5px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); color: var(--bg);
+  font-size: 0.55rem; display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+}
+
+/* ── PIN OVERLAY ── */
+#pinOverlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  animation: rise 0.3s ease;
+}
+#pinOverlay.hidden { display: none !important; }
+
+.pin-box {
+  width: 100%; max-width: 340px;
+  padding: 40px 28px;
+  text-align: center;
+}
+.pin-lock-icon {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px; font-size: 1.3rem;
+}
+.pin-box h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+.pin-box p { font-size: 0.72rem; color: var(--muted); margin-bottom: 32px; line-height: 1.6; }
+
+.pin-dots {
+  display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 28px; max-width: 260px; margin-left: auto; margin-right: auto;
+}
+.pin-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 1px solid var(--border2); background: transparent;
+  transition: all 0.15s;
+}
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.pin-dot.error  { background: var(--red);    border-color: var(--red); }
+
+.pin-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 16px;
+}
+.pin-key {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.2rem; font-weight: 700;
+  padding: 16px 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); cursor: pointer;
+  transition: all 0.12s; user-select: none;
+}
+.pin-key:hover { background: var(--surface2); border-color: var(--border2); }
+.pin-key:active { transform: scale(0.94); }
+.pin-key.wide { grid-column: span 2; }
+.pin-key.del  { font-size: 0.9rem; color: var(--muted); }
+
+.pin-error-msg {
+  font-size: 0.68rem; color: var(--red); letter-spacing: 0.08em;
+  min-height: 18px; margin-top: 4px;
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+
+/* ── PIN OVERLAY ── */
+#pinOverlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  animation: rise 0.3s ease;
+}
+#pinOverlay.hidden { display: none; }
+
+.pin-box {
+  width: 100%; max-width: 340px;
+  padding: 40px 28px;
+  text-align: center;
+}
+.pin-lock-icon {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px; font-size: 1.3rem;
+}
+.pin-box h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+.pin-box p { font-size: 0.72rem; color: var(--muted); margin-bottom: 32px; line-height: 1.6; }
+
+.pin-dots {
+  display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.pin-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 1px solid var(--border2); background: transparent;
+  transition: all 0.15s;
+}
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.pin-dot.error  { background: var(--red); border-color: var(--red); }
+
+.pin-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 16px;
+}
+.pin-key {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.2rem; font-weight: 700;
+  padding: 16px 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); cursor: pointer;
+  transition: all 0.12s; user-select: none;
+}
+.pin-key:hover { background: var(--surface2); border-color: var(--border2); }
+.pin-key:active { transform: scale(0.94); }
+.pin-key.wide { grid-column: span 2; }
+.pin-key.del  { font-size: 0.9rem; color: var(--muted); }
+
+.pin-error-msg {
+  font-size: 0.68rem; color: var(--red); letter-spacing: 0.08em;
+  min-height: 18px; margin-top: 4px;
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+
+/* ── PAGES ── */
+.page { display: none; }
+.page.active { display: block; animation: rise 0.35s cubic-bezier(.22,.68,0,1.2); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ══════════════════════════════
+   SENDER PAGE
+══════════════════════════════ */
+#pageSend {
+  display: none;
+  min-height: calc(100vh - 58px);
+  align-items: center; justify-content: center;
+}
+#pageSend.active { display: flex; }
+
+.send-container {
+  width: 100%; max-width: 480px;
+  padding: 48px 24px;
+}
+
+.send-eyebrow {
+  font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.send-eyebrow::before {
+  content: '';
+  width: 20px; height: 1px; background: var(--accent);
+}
+
+.send-title {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(1.9rem, 5vw, 2.8rem);
+  font-weight: 800; line-height: 1.1; letter-spacing: -0.03em;
+  margin-bottom: 10px;
+}
+.send-title span { color: var(--muted); }
+
+.send-sub {
+  font-size: 0.78rem; color: var(--muted); line-height: 1.7;
+  margin-bottom: 40px; letter-spacing: 0.02em;
+}
+
+/* text box */
+.box {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 20px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.box:focus-within {
+  border-color: rgba(127,255,110,0.4);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.box textarea {
+  width: 100%; min-height: 160px;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.95rem; line-height: 1.75;
+  background: transparent; border: none; outline: none; resize: none;
+  color: var(--text);
+}
+.box textarea::placeholder { color: #3e3e4a; }
+
+.box-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.char-info { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.06em; }
+.char-info.warn { color: var(--red); }
+
+/* send button */
+.btn-send {
+  width: 100%; margin-top: 16px;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 15px;
+  background: var(--accent); color: var(--bg);
+  border: none; border-radius: 4px; cursor: pointer;
+  transition: all 0.2s; position: relative; overflow: hidden;
+}
+.btn-send:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 8px 30px var(--accent-glow); }
+.btn-send:active { transform: translateY(0); }
+.btn-send:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.anon-note {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 16px;
+  font-size: 0.65rem; color: var(--muted); letter-spacing: 0.06em;
+  justify-content: center;
+}
+.anon-note svg { opacity: 0.5; flex-shrink: 0; }
+
+/* success */
+.success-view {
+  display: none; text-align: center;
+  padding: 60px 20px;
+  animation: rise 0.4s ease;
+}
+.success-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--accent-dim); border: 1px solid rgba(127,255,110,0.3);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 1.6rem;
+  animation: pop 0.5s cubic-bezier(.175,.885,.32,1.275);
+}
+@keyframes pop { from { transform: scale(0) rotate(-10deg); } to { transform: scale(1) rotate(0); } }
+.success-view h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.4rem; font-weight: 800; margin-bottom: 8px;
+}
+.success-view p { font-size: 0.75rem; color: var(--muted); line-height: 1.7; }
+.btn-again {
+  margin-top: 28px;
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 10px 28px;
+  background: transparent; border: 1px solid var(--border2);
+  color: var(--muted); cursor: pointer; border-radius: 4px;
+  transition: all 0.15s;
+}
+.btn-again:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ══════════════════════════════
+   INBOX PAGE
+══════════════════════════════ */
+.inbox-layout {
+  max-width: 720px; margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+/* share strip */
+.share-strip {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 6px; padding: 12px 16px;
+  margin-bottom: 32px;
+}
+.share-icon { font-size: 1rem; flex-shrink: 0; }
+.share-strip .share-url {
+  flex: 1; font-size: 0.72rem; color: var(--muted);
+  letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-strip .share-url strong { color: var(--text); }
+.btn-copy {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 7px 16px; border: 1px solid var(--border2);
+  background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 3px; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+}
+.btn-copy:hover, .btn-copy.copied { border-color: var(--accent); color: var(--accent); }
+
+/* stats */
+.stats-bar {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 28px;
+}
+.stat-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 16px;
+  text-align: center;
+}
+.stat-n {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.7rem; font-weight: 800;
+  color: var(--text); display: block; line-height: 1;
+  margin-bottom: 4px;
+}
+.stat-n.accent { color: var(--accent); }
+.stat-l { font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* filter row */
+.filter-row {
+  display: flex; gap: 6px; margin-bottom: 20px;
+}
+.fbtn {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 6px 16px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 3px; transition: all 0.15s;
+}
+.fbtn:hover { color: var(--text); border-color: var(--border2); }
+.fbtn.active { color: var(--accent); border-color: rgba(127,255,110,0.35); background: var(--accent-dim); }
+
+/* message list */
+.msg-list { display: flex; flex-direction: column; gap: 10px; }
+
+.msg {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 20px 22px;
+  cursor: pointer; transition: all 0.18s;
+  position: relative;
+}
+.msg::before {
+  content: '';
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 0; background: var(--accent);
+  border-radius: 0 2px 2px 0; transition: height 0.25s ease;
+}
+.msg:hover::before, .msg.open::before { height: 60%; }
+.msg.unread::before { height: 40%; }
+.msg:hover { border-color: var(--border2); background: var(--surface2); }
+.msg.open { border-color: rgba(127,255,110,0.25); background: var(--surface2); }
+
+.msg-top {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.msg-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0;
+  box-shadow: 0 0 6px var(--accent);
+  transition: opacity 0.3s;
+}
+.msg.read .msg-dot { opacity: 0; }
+.msg-from { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.msg-time { font-size: 0.65rem; color: var(--muted); margin-left: auto; }
+
+.msg-body {
+  font-size: 0.9rem; line-height: 1.75; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; transition: all 0.2s;
+}
+.msg.open .msg-body { -webkit-line-clamp: unset; overflow: visible; }
+
+.msg-actions {
+  display: none; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  gap: 8px;
+}
+.msg.open .msg-actions { display: flex; }
+.act-btn {
+  font-family: 'Inconsolata', monospace;
+  font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 5px 14px; border-radius: 3px;
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--muted); cursor: pointer; transition: all 0.15s;
+}
+.act-btn:hover { color: var(--text); border-color: var(--border2); }
+.act-btn.danger:hover { color: var(--red); border-color: var(--red); background: var(--red-dim); }
+
+/* empty */
+.empty {
+  text-align: center; padding: 80px 24px;
+  color: var(--muted);
+}
+.empty-icon {
+  font-size: 2.2rem; margin-bottom: 16px; opacity: 0.4;
+  display: block;
+}
+.empty p { font-size: 0.75rem; line-height: 1.8; letter-spacing: 0.04em; }
+
+/* ── Inbox heading ── */
+.inbox-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.inbox-head h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;
+}
+
+@media (max-width: 500px) {
+  header { padding: 0 16px; }
+  .inbox-layout { padding: 28px 14px 60px; }
+  .send-container { padding: 36px 16px; }
+  .stats-bar { grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .stat-box { padding: 12px 8px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ PIN OVERLAY ══ -->
+<div id="pinOverlay" class="hidden">
+  <div class="pin-box">
+    <div class="pin-lock-icon">🔒</div>
+    <h3>Inbox locked</h3>
+    <p>Enter your PIN to access your messages.</p>
+
+    <div class="pin-dots" id="pinDots">
+      <span class="pin-dot" id="pd0"></span>
+      <span class="pin-dot" id="pd1"></span>
+      <span class="pin-dot" id="pd2"></span>
+      <span class="pin-dot" id="pd3"></span>
+      <span class="pin-dot" id="pd4"></span>
+      <span class="pin-dot" id="pd5"></span>
+      <span class="pin-dot" id="pd6"></span>
+      <span class="pin-dot" id="pd7"></span>
+      <span class="pin-dot" id="pd8"></span>
+      <span class="pin-dot" id="pd9"></span>
+      <span class="pin-dot" id="pd10"></span>
+      <span class="pin-dot" id="pd11"></span>
+    </div>
+
+    <div class="pin-grid">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <button class="pin-key wide" onclick="pinPress('0')">0</button>
+      <button class="pin-key del" onclick="pinDel()">⌫</button>
+    </div>
+    <div class="pin-error-msg" id="pinErr"></div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">drop<span class="dot">.</span></div>
+  <div class="tab-group">
+    <button class="tab active" id="tabSend" onclick="goTo('Send')">Send</button>
+    <button class="tab" id="tabInbox" onclick="goTo('Inbox')" title="Inbox">
+      🔒
+      <span class="badge" id="unreadBadge" style="display:none">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- ══ SEND PAGE ══ -->
+<div class="page active" id="pageSend">
+  <div class="send-container">
+
+    <div id="sendForm">
+      <div class="send-eyebrow">anonymous message</div>
+      <h1 class="send-title">Say it.<br><span>No name attached.</span></h1>
+      <p class="send-sub">Write anything. Your identity stays completely hidden — the recipient only sees your words.</p>
+
+      <div class="box">
+        <textarea id="msgInput" maxlength="500" placeholder="Type your message here…" oninput="onType(this)"></textarea>
+        <div class="box-footer">
+          <span class="char-info" id="charInfo">0 / 500</span>
+        </div>
+      </div>
+
+      <button class="btn-send" id="btnSend" onclick="submitMsg()" disabled>Send anonymously</button>
+
+      <div class="anon-note">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="6" r="5" stroke="#6b6b7a" stroke-width="1.2"/>
+          <path d="M6 5.5v3M6 4v-.5" stroke="#6b6b7a" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        Your name and identity are never recorded or stored
+      </div>
+    </div>
+
+    <div class="success-view" id="successView">
+      <div class="success-icon">✓</div>
+      <h3>Message delivered.</h3>
+      <p>It's on its way — completely anonymous.<br>They'll never know it was you.</p>
+      <button class="btn-again" onclick="resetSend()">Send another message</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ INBOX PAGE ══ -->
+<div class="page" id="pageInbox">
+  <div class="inbox-layout">
+
+    <div class="inbox-head">
+      <h2>Inbox</h2>
+    </div>
+
+    <div class="share-strip">
+      <span class="share-icon">🔗</span>
+      <span class="share-url"><strong>Your shareable link:</strong> drop.app/to/<span id="mySlug">you</span></span>
+      <button class="btn-copy" id="copyBtn" onclick="copyLink()">Copy</button>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-box">
+        <span class="stat-n" id="sTotal">0</span>
+        <span class="stat-l">Total</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-n accent" id="sUnread">0</span>
+        <span class="stat-l">Unread</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-n" id="sToday">0</span>
+        <span class="stat-l">Today</span>
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <button class="fbtn active" onclick="setFilter('all',this)">All</button>
+      <button class="fbtn" onclick="setFilter('unread',this)">Unread</button>
+      <button class="fbtn" onclick="setFilter('read',this)">Read</button>
+    </div>
+
+    <div class="msg-list" id="msgList"></div>
+
+  </div>
+</div>
+
+<script>
+// ── Data ──
+const KEY = 'drop_msgs_v2';
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+const save = d => localStorage.setItem(KEY, JSON.stringify(d));
+
+// Always reset the send form on every page load so senders see a blank form
+// and never see any previously sent messages or state
+window.addEventListener('load', () => {
+  document.getElementById('msgInput').value = '';
+  document.getElementById('charInfo').textContent = '0 / 500';
+  document.getElementById('btnSend').disabled = true;
+  document.getElementById('sendForm').style.display = 'block';
+  document.getElementById('successView').style.display = 'none';
+  refreshBadge();
+});
+
+// ── PIN ──
+const CORRECT_PIN = '303355354475';
+const PIN_SESSION = 'drop_pin_ok';
+let pinBuffer = '';
+let pinLocked = true;
+
+function isPinUnlocked() {
+  return sessionStorage.getItem(PIN_SESSION) === '1';
+}
+function unlockPin() {
+  sessionStorage.setItem(PIN_SESSION, '1');
+  pinLocked = false;
+  document.getElementById('pinOverlay').classList.add('hidden');
+}
+
+function pinPress(d) {
+  if (pinBuffer.length >= CORRECT_PIN.length) return;
+  pinBuffer += d;
+  updatePinDots();
+  if (pinBuffer.length === CORRECT_PIN.length) {
+    setTimeout(checkPin, 120);
+  }
+}
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0,-1);
+  updatePinDots();
+  document.getElementById('pinErr').textContent = '';
+}
+function updatePinDots() {
+  for (let i = 0; i < CORRECT_PIN.length; i++) {
+    const dot = document.getElementById('pd'+i);
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  }
+}
+function checkPin() {
+  if (pinBuffer === CORRECT_PIN) {
+    unlockPin();
+    openInbox();
+  } else {
+    for (let i = 0; i < CORRECT_PIN.length; i++) {
+      const dot = document.getElementById('pd'+i);
+      dot.classList.remove('filled');
+      dot.classList.add('error');
+    }
+    document.getElementById('pinDots').style.animation = 'shake 0.4s ease';
+    setTimeout(()=>{ document.getElementById('pinDots').style.animation=''; },400);
+    document.getElementById('pinErr').textContent = 'Incorrect PIN — try again';
+    pinBuffer = '';
+  }
+}
+
+// ── Nav ──
+function goTo(page) {
+  if (page === 'Inbox') {
+    if (isPinUnlocked()) {
+      openInbox();
+    } else {
+      document.getElementById('pinOverlay').classList.remove('hidden');
+    }
+    return;
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('pageSend').classList.add('active');
+  document.getElementById('tabSend').classList.add('active');
+}
+
+function openInbox() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('pageInbox').classList.add('active');
+  document.getElementById('tabInbox').classList.add('active');
+  renderInbox(currentFilter);
+}
+
+// ── Sender ──
+function onType(el) {
+  const len = el.value.length;
+  const info = document.getElementById('charInfo');
+  info.textContent = len + ' / 500';
+  info.className = 'char-info' + (len > 440 ? ' warn' : '');
+  document.getElementById('btnSend').disabled = len === 0;
+}
+
+function submitMsg() {
+  const text = document.getElementById('msgInput').value.trim();
+  if (!text) return;
+  const msgs = load();
+  msgs.unshift({ id: Date.now(), text, time: new Date().toISOString(), read: false });
+  save(msgs);
+  document.getElementById('sendForm').style.display = 'none';
+  document.getElementById('successView').style.display = 'block';
+  refreshBadge();
+}
+
+function resetSend() {
+  document.getElementById('msgInput').value = '';
+  document.getElementById('charInfo').textContent = '0 / 500';
+  document.getElementById('btnSend').disabled = true;
+  document.getElementById('sendForm').style.display = 'block';
+  document.getElementById('successView').style.display = 'none';
+}
+
+// ── Inbox ──
+let currentFilter = 'all';
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderInbox(f);
+}
+
+function renderInbox(filter) {
+  const msgs = load();
+  const today = new Date().toDateString();
+
+  // stats
+  const unread = msgs.filter(m=>!m.read).length;
+  const todayN = msgs.filter(m=>new Date(m.time).toDateString()===today).length;
+  document.getElementById('sTotal').textContent  = msgs.length;
+  document.getElementById('sUnread').textContent = unread;
+  document.getElementById('sToday').textContent  = todayN;
+  refreshBadge();
+
+  // filter
+  const visible = msgs.filter(m => {
+    if (filter==='unread') return !m.read;
+    if (filter==='read')   return  m.read;
+    return true;
+  });
+
+  const list = document.getElementById('msgList');
+  if (!visible.length) {
+    list.innerHTML = `<div class="empty"><span class="empty-icon">📭</span><p>No messages here yet.<br>Share your link and wait for drops to arrive.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = visible.map(m => `
+    <div class="msg ${m.read?'read':'unread'}" id="m${m.id}" onclick="toggle(${m.id})">
+      <div class="msg-top">
+        <span class="msg-dot"></span>
+        <span class="msg-from">anonymous</span>
+        <span class="msg-time">${ago(m.time)}</span>
+      </div>
+      <div class="msg-body">${esc(m.text)}</div>
+      <div class="msg-actions">
+        <button class="act-btn" onclick="event.stopPropagation();markToggle(${m.id})" id="mbt${m.id}">${m.read?'Mark unread':'Mark read'}</button>
+        <button class="act-btn danger" onclick="event.stopPropagation();del(${m.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggle(id) {
+  const msgs = load();
+  const card = document.getElementById('m'+id);
+  const wasOpen = card.classList.contains('open');
+  document.querySelectorAll('.msg').forEach(c=>c.classList.remove('open'));
+  if (!wasOpen) {
+    card.classList.add('open');
+    const idx = msgs.findIndex(m=>m.id===id);
+    if (idx!==-1 && !msgs[idx].read) {
+      msgs[idx].read = true; save(msgs);
+      card.classList.remove('unread'); card.classList.add('read');
+      const dot = card.querySelector('.msg-dot');
+      if(dot) dot.style.opacity='0';
+      const mbt = document.getElementById('mbt'+id);
+      if(mbt) mbt.textContent='Mark unread';
+      refreshBadge();
+      const u = document.getElementById('sUnread');
+      if(u) u.textContent = msgs.filter(m=>!m.read).length;
+    }
+  }
+}
+
+function markToggle(id) {
+  const msgs = load();
+  const idx = msgs.findIndex(m=>m.id===id);
+  if(idx!==-1){ msgs[idx].read=!msgs[idx].read; save(msgs); }
+  renderInbox(currentFilter);
+}
+
+function del(id) {
+  save(load().filter(m=>m.id!==id));
+  renderInbox(currentFilter);
+}
+
+function refreshBadge() {
+  const n = load().filter(m=>!m.read).length;
+  const b = document.getElementById('unreadBadge');
+  b.textContent = n;
+  b.style.display = n ? 'flex' : 'none';
+}
+
+function copyLink() {
+  const url = window.location.href.split('?')[0];
+  navigator.clipboard.writeText(url).catch(()=>{});
+  const btn = document.getElementById('copyBtn');
+  btn.textContent = 'Copied!'; btn.classList.add('copied');
+  setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('copied'); }, 2000);
+}
+
+// Also show real URL in the share strip
+window.addEventListener('DOMContentLoaded', () => {
+  const slugEl = document.getElementById('mySlug');
+  if (slugEl) {
+    const url = window.location.href.split('?')[0];
+    slugEl.textContent = '';
+    slugEl.parentElement.innerHTML = '<strong>Share this link:</strong> ' + url;
+  }
+});
+
+function ago(iso) {
+  const s = (Date.now()-new Date(iso))/1000;
+  if(s<60)   return 'just now';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400)return Math.floor(s/3600)+'h ago';
+  if(s<172800)return 'yesterday';
+  return new Date(iso).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// init badge
+refreshBadge();
+</script>
+</body>
+</html>
